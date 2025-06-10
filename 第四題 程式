@@ -1,0 +1,24 @@
+import numpy as np
+
+# 參數設定
+dx = dt = 0.1
+x = np.arange(0, 1.01, dx)    # [0.0, 0.1, ..., 1.0]
+t = np.arange(0, 2.01, dt)    # [0.0, 0.1, ..., 2.0]
+nx, nt = len(x), len(t)
+
+# 初始條件
+p = np.zeros((nt, nx))
+p[0] = np.cos(2 * np.pi * x)                     # p(x,0)
+p[1] = p[0] + dt * 2 * np.pi * np.sin(2 * np.pi * x)  # ∂p/∂t(x,0)
+
+# 時間迭代
+for j in range(1, nt-1):
+    for i in range(1, nx-1):
+        p[j+1,i] = 2*(1-(dt/dx)**2)*p[j,i] + (dt/dx)**2*(p[j,i+1]+p[j,i-1]) - p[j-1,i]
+    # 邊界條件
+    p[j+1,0] = 1   # p(0,t)=1
+    p[j+1,-1] = 2  # p(1,t)=2
+
+# 輸出完整解
+print("問題4完整解（p[j,i]對應t=0.1*j, x=0.1*i）：")
+print(p)
