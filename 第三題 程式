@@ -1,0 +1,31 @@
+import numpy as np
+
+# 參數設定
+dr = 0.1
+dtheta = np.pi / 30
+r = np.arange(0.5, 1.01, dr)       # [0.5, 0.6, ..., 1.0]
+theta = np.arange(0, np.pi/3 + dtheta, dtheta)  # [0, π/30, ..., π/3]
+nr, nt = len(r), len(theta)
+
+# 初始化與邊界條件
+T = np.zeros((nr, nt))
+T[0,:] = 50    # T(0.5,θ)=50
+T[-1,:] = 100  # T(1,θ)=100
+T[:,0] = 0     # T(r,0)=0
+T[:,-1] = 0    # T(r,π/3)=0
+
+# 迭代求解
+for _ in range(10000):
+    T_old = T.copy()
+    for i in range(1, nr-1):
+        for j in range(1, nt-1):
+            a = 1/dr**2 + 1/(r[i]**2 * dtheta**2)
+            term = (T[i+1,j]+T[i-1,j])/dr**2 + (T[i+1,j]-T[i-1,j])/(2*r[i]*dr) \
+                   + (T[i,j+1]+T[i,j-1])/(r[i]**2 * dtheta**2)
+            T[i,j] = term / (2*a)
+    if np.max(np.abs(T - T_old)) < 1e-6:
+        break
+
+# 輸出完整二維場
+print("問題3完整解（T[i,j]對應r=0.5+0.1*i, θ=j*π/30）：")
+print(T)
