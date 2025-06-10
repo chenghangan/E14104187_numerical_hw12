@@ -1,0 +1,110 @@
+import numpy as np
+from scipy.sparse import diags
+from scipy.sparse.linalg import spsolve
+
+# ================== 參數設定 ==================
+K = 0.1
+dr = 0.1
+dt = 0.5
+r = np.arange(0.5, 1.01, dr)  # [0.5, 0.6, ..., 1.0]
+t = np.arange(0, 10.01, dt)    # [0.0, 0.5, ..., 10.0]
+nr, nt = len(r), len(t)
+
+# ================== 共用初始條件 ==================
+T0 = 200 * (r - 0.5)  # T(r,0) = 200(r-0.5)
+
+# ================== (a) 前向差分法 ==================
+T_forward = np.zeros((nt, nr))
+T_forward[0] = T0.copy()
+
+for j in range(nt-1):
+    for i in range(1, nr-1):
+        T_forward[j+1,i] = T_forward[j,i] + (4*K*dt/dr**2) * (T_forward[j,i+1] - 2*T_forward[j,i] + T_forward[j,i-1]) \
+                          + (2*K*dt/(r[i]*dr)) * (T_forward[j,i+1] - T_forward[j,i-1])
+    # 邊界條件
+    T_forward[j+1,-1] = 100 + 40*t[j+1]  # T(1,t)
+    T_forward[j+1,0] = (T_forward[j+1,1] - 3*dr*T_forward[j+1,0]) / (1 + 3*dr)  # 導數邊界
+
+# ================== (b) 後向差分法 ==================
+T_backward = np.zeros((nt, nr))
+T_backward[0] = T0.copy()
+
+# 構建三對角矩陣
+def build_matrix(nr, dr, r, K, dt):
+    alpha = 4*K*dt/dr**2
+    beta = 2*K*dt/dr
+    diagonals = [
+        -alpha/2 + beta/(2*r[1:-1]),  # 下對角線
+        1 + alpha,                    # 主對角線
+        -alpha/2 - beta/(2*r[1:-1])   # 上對角線
+    ]
+    return diags(diagonals, [-1, 0, 1], shape=(nr-2, nr-2)).tocsr()
+
+A = build_matrix(nr, dr, r, K, dt)
+
+for j in range(nt-1):
+    b = T_backward[j, 1:-1].copy()
+    # 邊界項處理
+    b[0] += (2*K*dt/dr**2 - 2*K*dt/(r[1]*dr)) * T_backward[j+1,0]
+    b[-1] += (2*K*dt/dr**2 + 2*K*dt/(r[-2]*dr)) * T_backward[j+1,-1]
+    T_backward[j+1, 1:-1] = spsolve(A, b)
+    # 更新邊界
+    T_backward[j+1,-1] = 100 + 40*t[j+1]
+    T_backward[j+1,0] = (T_backward[j+1,1] - 3*dr*T_backward[j+1,0]) / (1 + 3*dr)
+
+# ================== (c) Crank-Nicolson法 ==================
+T_cn = np.zeros((nt, nr))
+T_cn[0] = T0.copy()
+
+def build_cn_matrices(nr, dr, r, K, dt):
+    alpha = 4*K*dt/dr**2
+    beta = 2*K*dt/dr
+    # 隱式矩陣 (左矩陣)
+    L = diags([
+        -alpha/4 + beta/(4*r[1:-1]),
+        1 + alpha/2,
+        -alpha/4 - beta/(4*r[1:-1])
+    ], [-1, 0, 1])
+    # 顯式矩陣 (右矩陣)
+    R = diags([
+        alpha/4 - beta/(4*r[1:-1]),
+        1 - alpha/2,
+        alpha/4 + beta/(4*r[1:-1])
+    ], [-1, 0, 1])
+    return L.tocsr(), R.tocsr()
+
+L, R = build_cn_matrices(nr, dr, r, K, dt)
+
+for j in range(nt-1):
+    b = R @ T_cn[j, 1:-1]
+    # 邊界處理
+    b[0] += (alpha/4 - beta/(4*r[1])) * T_cn[j+1,0] + (alpha/4 + beta/(4*r[1])) * T_cn[j,0]
+    b[-1] += (alpha/4 + beta/(4*r[-2])) * T_cn[j+1,-1] + (alpha/4 - beta/(4*r[-2])) * T_cn[j,-1]
+    T_cn[j+1, 1:-1] = spsolve(L, b)
+    # 更新邊界
+    T_cn[j+1,-1] = 100 + 40*t[j+1]
+    T_cn[j+1,0] = (T_cn[j+1,1] - 3*dr*T_cn[j+1,0]) / (1 + 3*dr)
+
+# ================== 整合輸出 ==================
+print("="*50)
+print("問題2 三種方法完整解（格式說明：")
+print("矩陣行索引 j 對應時間 t = 0.5*j")
+print("矩陣列索引 i 對應位置 r = 0.5 + 0.1*i")
+print("="*50)
+
+print("\n(a) 前向差分法結果：")
+print(np.round(T_forward, 2))
+
+print("\n(b) 後向差分法結果：")
+print(np.round(T_backward, 2))
+
+print("\n(c) Crank-Nicolson法結果：")
+print(np.round(T_cn, 2))
+
+# ================== 輸出到檔案 ==================
+np.savetxt('problem2_forward.txt', T_forward, 
+           header=f'r={r}\nt={t}\nMethod=Forward', fmt='%.2f')
+np.savetxt('problem2_backward.txt', T_backward,
+           header=f'r={r}\nt={t}\nMethod=Backward', fmt='%.2f')
+np.savetxt('problem2_cranknicolson.txt', T_cn,
+           header=f'r={r}\nt={t}\nMethod=Crank-Nicolson', fmt='%.2f')
